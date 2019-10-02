@@ -1,0 +1,247 @@
+							;		Se inicializan los valores de los operandos; Cada uno de estos entra como una cadena IEE754
+							;op2		dcd		0b11000001000001000000000000000000 ;8.25
+							;op1		dcd		0b01000000010100000000000000000000 ;3.25
+							;op1		dcd		0b11000000110010000000000000000000 ;6.25
+							;op2		dcd		0b01000000111010000000000000000000 ;7.25
+							;op1		dcd		0b01001010101000011100001000101000 ;5300500
+							;op1		dcd		0b11001101000011110000110110110100 ;150002493
+							;op1		dcd		0b10111000010100011011011100010111 ;0.00005
+							;op2		dcd		0b00111000001001111100010110101100 ;0.00004
+op1							dcd		0b11111111011111111111111111111111 ;3.4028235E38
+op2							dcd		0b11111111011111111111111111111110 ;3.4028233E38
+							;op1		dcd		0b01000011111110101000000000000000 ;501
+							;op2		dcd		0b10111101001000111101011100001010 ;0.04
+							
+							;Se		inicializan valores requeridos para clculo
+xor							dcd		0b11111111111111111111111111111111
+resultado						dcd		0b0
+							;----------------------------------Se	preparan los datos de entrada--------------------------------------
+							adr		r0,op1
+							ldr		r1,[r0]		;Operando 1
+							adr		r0,op2
+							ldr		r2,[r0]		;Operando 2
+							
+							adr		r0,resultado
+							ldr		r8,[r0]		;Resultado
+							lsr		r3,r1,#31	;sig operando1
+							lsr		r4,r2,#31	;sig	operando2
+							eor		r4,r4,#1  ;invierte el signo del segundo operando
+							lsl		r5,r1,#1
+							lsr		r5,r5,#24	;exp 1
+							lsl		r6,r2,#1
+							lsr		r6,r6,#24	;exp 2
+							lsl		r1,r1,#9	;mantisa 1
+							lsl		r2,r2,#9	;mantisa 2
+							lsr		r1,r1,#1	;mantisa 1
+							lsr		r2,r2,#1	;mantisa 2
+							;------------------------------------Se	guardan los valores de los registros en la pila ------------------------------------
+							stmfa	r13!, {r1-r8}
+							;---------------------------------------------------------------------------------------------------------------------------
+							;Se		invoca la suma
+							bl		suma
+							;-----------------------------Se	restauran los valores de registros----------------------------------
+							ldmfa	r13!,{r0-r8}
+							;------------------------------------Se	prepara la salidaSalida------------------------------------------
+							;Se		limpian los registros y reacomodan los resultados.
+							eor		r1,r1,r1
+							eor		r2,r2,r2
+							eor		r3,r3,r3
+							eor		r4,r4,r4
+							eor		r5,r5,r5
+							eor		r11,r11,r11
+							;Se		acomodan los resultados en registros espe.
+							eor		r6,r6,r6
+							mov		r9,r10
+							eor		r10,r10,r10
+							adr		r0,resultado
+							str		r8,[r0]
+							cmp		r8,#0 ; Eval. si el resultado tiende a +0 ó a -0
+							subeq	r7,r7,r7
+							cmp		r7,#255 ; Verifica si tiende a infinito
+							subge	r8,r8,r8
+							;Armando	cadena para el resultado
+							lsl		r10,r9,#31
+							lsl		r11,r7,#23
+							add		r10,r10,r11
+							add		r10,r10,r8
+							eor		r11,r11,r11
+							;-----------------------------;
+							;Resultado	;
+							;		r7: exponente		;
+							;		r8: mantisa		;
+							;		r9: Signo			;
+							;		r10: cadena completa;
+							;-----------------------------;
+							end
+							;-------------------------------------------------------------------------------------------------------------
+suma
+							stmfa	r13!,{r14} ;guarda	la dir. de retorno
+							bl		alinear_mantisas
+							ldmfa	r13!,{r14} ;Se hace pop a la pila para obtener la dir. anterior
+							str		r1,[r13,#-28]
+							str		r2,[r13,#-24]
+							str		r3,[r13,#-20]
+							str		r4,[r13,#-16]
+							cmp		r3,r4	;Se comparan los signos
+							beq		calcular_con_signo_igual
+							bne		calcular_con_signo_distinto
+fin_calculo_signo
+							sub		r8,r8,r9 ;primer ajuste
+							str		r7,[r13,#-4]	;se actualiza el valor en la pila con el exponente actual del resultado
+							str		r8,[r13,#-0]	;se almacena el resultado
+							stmfa	r13!,{r14} ;guarda	la dir. de retorno
+							cmp		r5,r6
+							bleq		alinear_11
+							blne		alinear_10
+							ldmfa	r13!,{r14} ;Se hace pop a la pila para obtener la dir. anterior
+volver
+							lsr		r8,r8,#9
+							str		r7,[r13,#-4]	;se actualiza el valor en la pila con el exponente actual del resultado
+							str		r8,[r13,#-0]	;se almacena el resultado
+							mov		r15,r14 ;Regresamos a bl suma
+calcular_con_signo_igual ;Si el signo es igual, se realiza una suma de las mantizas independientemente del signo
+							lsl		r1,r1,#1
+							lsl		r2,r2,#1
+							cmp		r5,r6
+							movgt	r7,r5
+							movle	r7,r6
+							mov		r10,r3 	;Signo del resultado
+							adds		r11,r1,r2
+							adcs		r8,r1,r2
+							sub		r9,r8,r11
+							b		fin_calculo_signo
+calcular_con_signo_distinto	; Hay una "resta" impl. en la operac.
+							cmp		r5,r6
+							cmpeq	r1,r2
+							moveq	r15,r14
+							
+continuar_calculo_sig_distinto
+							cmp		r5,r6 ;Compara exponentes
+							movgt	r7,r5
+							movle	r7,r6
+							subgt	r8,r1,r2
+							movgt	r10,r3
+							sublt	r8,r2,r1
+							movlt	r10,r4
+							bne		fin_calculo_signo
+							moveq	r7,r5
+							cmpeq	r1,r2
+							subgt	r8,r1,r2
+							movgt	r10,r3
+							sublt	r8,r2,r1
+							movlt	r10,r4
+							stmfa	r13!,{r14} ;guarda	la dir. de retorno
+							bl		alinear_00
+							ldmfa	r13!,{r14} ;Se hace pop a la pila para obtener la dir. anterior
+							b		fin_calculo_signo
+alinear_11
+							cmp		r5,r6 ;compara exponentes
+							bne		alinear_11_caso1
+							cmpeq	r3,r4 ;compara signos
+							beq		alinear_11_caso1
+							cmpne	r7,#127
+							subge	R9,R7,#127
+							subge	R7,R7,R9
+							bne		ciclo_alineamiento
+salir_alineamiento
+							mov		r15,r14
+ciclo_alineamiento
+							cmp		R9,#0
+							beq		salir_alineamiento
+							lslne	r8,r8,#1
+							subne	r9,r9,#1
+							b		ciclo_alineamiento
+alinear_11_caso1
+							cmp		r9, #1
+							adreq	r0,xor
+							ldreq	r11,[r0]		;Resultado
+							eoreq	r8,r8,r11
+							lsreq	r8,r8,#1
+							eoreq	r8,r8,r11
+							addeq	r7,r7,#1 ;se ajusta el valor del exponente
+							;lsrne	r8,r8,#1
+							;eorne	r8,r8,r11
+							;lsrne	r8,r8,#1
+							;eorne	r8,r8,r11
+							;addne	r7,r7,#1 ;se ajusta el exponente
+							mov		r15,r14
+alinear_10
+							cmp		R9,#1
+							beq		alinear_10_caso1
+							cmpne	R3,R4
+							lsreq	R8,R8,r9 ;se inserta el valor asociado al acarreo, si ambos operandos tienen el mismo signo
+							;addeq	R7,R7,#1
+							lslne	R8,R8,#1 ;***#2
+							;subne	r7,r7,#1 ;***
+							cmp		R5,R6
+							addeq	R7,R7,#1
+							mov		r15,r14
+alinear_10_caso1
+							cmp		R3,R4
+							adreq	r0,xor
+							ldreq	r11,[r0]		;Resultado
+							eoreq	r8,r8,r11
+							lsreq	r8,r8,#1
+							eoreq	r8,r8,r11
+							addeq	R7,R7,#1
+							mov		r15,r14
+alinear_00
+							lsr		r9,r8,#31
+							cmp		r9,#1
+							lsl		r8,r8,#1
+							subeq	r9,r9,#1
+							moveq	r15,r14
+							sub		r7,r7,#1
+							b		alinear_00
+alinear_mantisas ;Realiza el alineamiento inicial antes de realizar la suma de las mantisas
+							;guarda	la dir. de retorno
+							stmfa	r13!,{r14}
+							;Recupera	los valores de la pila
+							ldr		r1, [r13,#-36] 	;mantisa 1
+							ldr		r2, [r13,#-32] 	;mantisa 2
+							ldr		r3, [r13,#-28] 	;signo 1
+							ldr		r4, [r13,#-24] 	;signo 2
+							ldr		r5, [r13,#-20] 	;se recupera el exponente 1
+							ldr		r6, [r13,#-16] 	;se recupera el exponente 2
+							ldr		r7, [r13,#-12]	;se recupera el valor para la diferencia de los exponentes
+							ldr		r8, [r13,#-8]
+							sub		r7,r5,r6		;se calcula la diferencia entre exponentes
+							str		r7,[r13,#-8]	;se actualiza el valor en la pila
+							ldmfa	r13!,{r14} ;Se hace pop a la pila para obtener la dir. anterior
+							cmp		r5,r6 ;Se comparan exponentes
+							moveq	r15,r14 ;Se regresa a suma ya que no hay que alinear porque los expoentes son iguales
+							add		r8,r8,#1 ;Utilizado para controlar el primer corrimiento, ya que es el "1" impl. a la izq del "."
+ciclo_exp
+							cmp		r8,#1 ;Eval. si se debe hacer el primer corrimiento con "1" o no.
+							subeq	r8,r8,#1
+							beq		primer_corrimiento
+							cmp		r7,#0 ;Verifica si se finaliza con los corrimientos necesarios
+							moveq	r15,r14 ;Regresamos a suma
+							b		otros_corrimientos
+primer_corrimiento	;Se realiza en el primer corrimiento debido al 1 a la izq del punto. Ej: 1.01 -> 0.101
+							adr		r0,xor		;Se utiliza un xor con 1111111... para invertir la cadena de la mantisa
+							ldr		r11,[r0]		;Resultado
+							cmp		r7,#0 ;Para verificar el operando en que se debe hacer corrimiento
+							;		concatena un "1" a la izq del 2do operando
+							lslgt	r2,r2,#1
+							subgt	r7,r7,#1
+							eorgt	r10,r2,r11
+							lsrgt	r10,r10,#1
+							eorgt	r2,r10,r11
+							lsrgt	r2,r2,#1
+							;		concatena un "1" a la izq del 1er operando
+							lslle	r1,r1,#1
+							addle	r7,r7,#1
+							eorle	r10,r1,r11
+							lsrle	r10,r10,#1
+							eorle	r1,r10,r11
+							lsrle	r1,r1,#1
+							b		ciclo_exp
+otros_corrimientos	;Corrimientos realizados luego del primer corrimiento. Ej: 0.101 -> 0.0101
+							;		corrimiento en el 2do operando
+							subgt	r7,r7,#1
+							lsrgt	r2,r2,#1
+							;corrimiento	en el 1er operando
+							addle	r7,r7,#1
+							lsrle	r1,r1,#1
+							b		ciclo_exp
